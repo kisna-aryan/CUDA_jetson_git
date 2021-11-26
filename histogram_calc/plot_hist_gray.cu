@@ -6,6 +6,40 @@ using namespace std;
 using namespace cv;
 
 #define NoOfBins 65536
+#define maxThresold 10
+#define minThersold 10
+
+int histogram[NoOfBins];
+int *d_hostogram;
+
+__global__ void creatLUT(unsigned char *d_histogram, unsigned int hist_min, unsigned int hist_max)
+{
+    int idx = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+    float min_max_diff = hist_max - hist_min;
+    int d_NoOfBins = 65536; 
+    if (idx < d_NoOfBins)
+    {
+        float new_pixel = (idx - hist_min)/min_max_diff;
+        if(idx >= hist_max)
+        {
+            new_pixel = 1;
+        }
+        else if(idx <= hist_min)
+        {
+            new_pixel = 0;
+        }
+        d_histogram[idx] = (unsigned char)(new_pixel*255);
+    }
+}
+
+__global__ void applyAGC(unsigned short *src_img, unsigned char  *proc_image, unsigned char *d_histogram, int img_rows, int img_cols)
+{
+    int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+     proc_image[y*img_cols + x] = d_histogram[src_img[y*img_cols + x]];
+}
  
 int main()
 {
@@ -17,6 +51,16 @@ int main()
         cout << "Image not Found" << endl;
         return EXIT_FAILURE;
     }
+    Mat proc_image = Mat::zeros(Size(image.cols,image.rows),CV_8UC1);
+
+    // Create two temporary images (for holding sobel gradients)
+    unsigned char *process_img;
+    unsigned short *original_image;
+    cudaMalloc(&original_image, image.cols * image.rows);
+    cudaMalloc(&process_img, image.cols* image.rows);
+
+    cudaMemset(dJunk, 0, sz);
+
     // allcoate memory for no of pixels for each intensity value
     /*     The maximum number of pixels can be total number of pixels in image.
 
@@ -24,7 +68,7 @@ int main()
 
     The number of bins in 16 bit image is => 2^16 = 65536
     */
-    int histogram[NoOfBins];
+
  
     // initialize all intensity values to 0
     for(int i = 0; i < NoOfBins; i++)
@@ -53,18 +97,50 @@ int main()
  
     Mat histImage(hist_h, hist_w, CV_8UC1, Scalar(255, 255, 255));
  
-    // find the maximum intensity element from histogram
-    int max = histogram[0];
+     // find the maximum intensity element from histogram
+    int hist_max = histogram[0];
     for(int i = 1; i < NoOfBins; i++){
-        if(max < histogram[i]){
-            max = histogram[i];
+        if(hist_max < histogram[i]){
+            hist_max = histogram[i];
         }
     }
- 
+    // find the maximum intensity element from histogram
+    int max = histogram[NoOfBins-1];
+    for(int i = NoOfBins-2; i > 1; i--){
+        if(maxThresold < histogram[i]){
+            max = i;
+            break;
+        }
+    }
+
+    // find the minimum intensity element from histogram
+    int min = histogram[1];
+    for(int i = 2; i < NoOfBins; i++){
+        if(minThersold < histogram[i]){
+            min = i;
+            break;
+        }
+    }
+
+  
+    cout << "max:" << max << endl << "min:" << min <<endl;
+
+                // convolution kernel launch parameters
+    dim3 cblocks (image.cols / 16, image.rows/ 16);
+    dim3 cthreads(16, 16);
+
+    // pythagoran kernel launch paramters
+    dim3 pblocks (image.cols * image.rows / 256);
+    dim3 pthreads(256, 1);
+
+
+
+    applyAGC<<<pblocks,pthreads>>>(deviceGradientX, deviceGradientY, edgesDataDevice);
+
     // normalize the histogram between 0 and histImage.rows
  
     for(int i = 0; i < NoOfBins; i++){
-        histogram[i] = ((double)histogram[i]/max)*histImage.rows;
+        histogram[i] = ((double)histogram[i]/hist_max)*histImage.rows;
     }
  
  
@@ -76,12 +152,13 @@ int main()
              Scalar(0,0,0), 1, 8, 0);
     }
  
+
     // display histogram
     namedWindow("Intensity Histogram");
     imshow("Intensity Histogram", histImage);
  
     namedWindow("Image");
-    imshow("Image", image);
+    imshow("Image", proc_image);
     waitKey();
     return 0;
 }
