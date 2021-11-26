@@ -9,7 +9,7 @@
 				"-g",
 				"${file}",
 				"-I", 
-				"/usr/include/opencv4/",	
+				"/usr/local/include/opencv4/",	
 				"-L",
 				"/usr/lib/aarch64-linux-gnu",
                 "-l", "opencv_core",
