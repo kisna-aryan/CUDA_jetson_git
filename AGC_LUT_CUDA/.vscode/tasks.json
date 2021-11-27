@@ -1,0 +1,37 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "cppbuild",
+			"label": "C/C++: nvcc build active file",
+			"command": "/usr/local/cuda/bin/nvcc",
+			"args": [
+				"-g",
+				"${file}",
+				"-I", 
+				"/usr/include/opencv4/",	
+				"-L",
+				"/usr/lib/aarch64-linux-gnu",
+                "-l", "opencv_core",
+                "-l", "opencv_videoio",
+                "-l", "opencv_imgproc",
+                "-l", "opencv_highgui",
+				"-l", "opencv_imgproc ",
+				"-lopencv_imgcodecs",
+				"-o",
+				"${fileDirname}/${fileBasenameNoExtension}"
+			],
+			"options": {
+				"cwd": "${fileDirname}"
+			},
+			"problemMatcher": [
+				"$nvcc"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"detail": "compiler: /usr/local/cuda/bin/nvcc"
+		}
+	]
+}
