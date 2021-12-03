@@ -14,6 +14,13 @@ unsigned char histogram_LUT[NoOfBins];
 unsigned char *d_histogram_ptr;
 unsigned int *d_hist_max, *d_hist_min;
 
+__global__ void cudaprint(void)
+{
+    int idx = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+    printf("The index is: %d\n", idx);
+}
+
 __global__ void creatLUT(unsigned char *d_histogram, unsigned int *hist_min, unsigned int *hist_max)
 {
     int idx = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -159,13 +166,15 @@ int main()
     cudaMemcpy(d_hist_max, &max, sizeof(unsigned int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_hist_min, &min, sizeof(unsigned int), cudaMemcpyHostToDevice);
 
+    cudaprint<<<NoOfBins/256,256>>>();
 
-    creatLUT<<<NoOfBins/256,256>>>(d_histogram_ptr, d_hist_min, d_hist_max);
-    cudaThreadSynchronize();
+    
+    // creatLUT<<<NoOfBins/256,256>>>(d_histogram_ptr, d_hist_min, d_hist_max);
+    // cudaThreadSynchronize();
 
-    applyAGC<<<pblocks,pthreads>>>(d_original_image, d_process_img, d_histogram_ptr, 480, 640);
-    cudaThreadSynchronize();
-    cudaMemcpy(proc_image.data,d_process_img, image.rows * image.cols* sizeof(unsigned char), cudaMemcpyDeviceToHost);
+    // applyAGC<<<pblocks,pthreads>>>(d_original_image, d_process_img, d_histogram_ptr, 480, 640);
+    // cudaThreadSynchronize();
+    // cudaMemcpy(proc_image.data,d_process_img, image.rows * image.cols* sizeof(unsigned char), cudaMemcpyDeviceToHost);
 
 
     // normalize the histogram between 0 and histImage.rows
