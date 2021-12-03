@@ -10,22 +10,24 @@ using namespace cv;
 #define minThersold 10
 
 int histogram[NoOfBins];
-int *d_hostogram;
+unsigned char histogram_LUT[NoOfBins];
+unsigned char *d_histogram_ptr;
+unsigned int *d_hist_max, *d_hist_min;
 
-__global__ void creatLUT(unsigned char *d_histogram, unsigned int hist_min, unsigned int hist_max)
+__global__ void creatLUT(unsigned char *d_histogram, unsigned int *hist_min, unsigned int *hist_max)
 {
     int idx = (blockIdx.x * blockDim.x) + threadIdx.x;
 
-    float min_max_diff = hist_max - hist_min;
+    float min_max_diff = *hist_max - *hist_min;
     int d_NoOfBins = 65536; 
     if (idx < d_NoOfBins)
     {
-        float new_pixel = (idx - hist_min)/min_max_diff;
-        if(idx >= hist_max)
+        float new_pixel = (idx - *hist_min)/min_max_diff;
+        if(idx >= *hist_max)
         {
             new_pixel = 1;
         }
-        else if(idx <= hist_min)
+        else if(idx <= *hist_min)
         {
             new_pixel = 0;
         }
@@ -54,12 +56,13 @@ int main()
     Mat proc_image = Mat::zeros(Size(image.cols,image.rows),CV_8UC1);
 
     // Create two temporary images (for holding sobel gradients)
-    unsigned char *process_img;
-    unsigned short *original_image;
-    cudaMalloc(&original_image, image.cols * image.rows);
-    cudaMalloc(&process_img, image.cols* image.rows);
+    unsigned char *d_process_img;
+    unsigned short *d_original_image;
+    cudaMalloc(&d_original_image, image.cols * image.rows* sizeof(unsigned short));
+    cudaMalloc(&d_process_img, image.cols* image.rows* sizeof(unsigned char));
+    cudaMalloc(&d_histogram_ptr, NoOfBins);
 
-    cudaMemset(dJunk, 0, sz);
+    cudaMemcpy(d_original_image, image.data, image.rows * image.cols* sizeof(unsigned short), cudaMemcpyHostToDevice);
 
     // allcoate memory for no of pixels for each intensity value
     /*     The maximum number of pixels can be total number of pixels in image.
@@ -121,8 +124,27 @@ int main()
             break;
         }
     }
+    // // Fill the LUT with new pixel value
+    // float new_pixel, min_max_diff;
+    // min_max_diff = max-min;
 
-  
+    // for(int i = 0; i < NoOfBins; i++)
+    // {
+    //         new_pixel = (i - min)/min_max_diff;
+    //         if(i >= max)
+    //         {
+    //             new_pixel = 1;
+    //         }
+    //         else if(i <= min)
+    //         {
+    //             new_pixel = 0;
+    //         }
+    //         histogram_LUT[i] = (unsigned char)(new_pixel*255);
+    // }
+    
+    // cudaMemcpy(d_histogram_ptr, histogram_LUT, NoOfBins, cudaMemcpyHostToDevice);
+
+
     cout << "max:" << max << endl << "min:" << min <<endl;
 
                 // convolution kernel launch parameters
@@ -133,9 +155,18 @@ int main()
     dim3 pblocks (image.cols * image.rows / 256);
     dim3 pthreads(256, 1);
 
+    cudaMemset(d_histogram_ptr, 0, NoOfBins);
+    cudaMemcpy(d_hist_max, &max, sizeof(unsigned int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_hist_min, &min, sizeof(unsigned int), cudaMemcpyHostToDevice);
 
 
-    applyAGC<<<pblocks,pthreads>>>(deviceGradientX, deviceGradientY, edgesDataDevice);
+    creatLUT<<<NoOfBins/256,256>>>(d_histogram_ptr, d_hist_min, d_hist_max);
+    cudaThreadSynchronize();
+
+    applyAGC<<<pblocks,pthreads>>>(d_original_image, d_process_img, d_histogram_ptr, 480, 640);
+    cudaThreadSynchronize();
+    cudaMemcpy(proc_image.data,d_process_img, image.rows * image.cols* sizeof(unsigned char), cudaMemcpyDeviceToHost);
+
 
     // normalize the histogram between 0 and histImage.rows
  
