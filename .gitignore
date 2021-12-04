@@ -5,3 +5,4 @@
 *.cubin
 *.fatbin
 histogram_calc/plot_hist_gray
+histogram_calc/min_max_video_gpu

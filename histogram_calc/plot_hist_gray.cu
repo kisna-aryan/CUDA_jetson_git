@@ -14,25 +14,31 @@ unsigned char histogram_LUT[NoOfBins];
 unsigned char *d_histogram_ptr;
 unsigned int *d_hist_max, *d_hist_min;
 
-__global__ void creatLUT(unsigned char *d_histogram, unsigned int *hist_min, unsigned int *hist_max)
+__global__ void creatLUT(unsigned char *d_histogram, unsigned int hist_min, unsigned int hist_max)
 {
     int idx = (blockIdx.x * blockDim.x) + threadIdx.x;
 
-    float min_max_diff = *hist_max - *hist_min;
+    float min_max_diff = hist_max - hist_min;
     int d_NoOfBins = 65536; 
     if (idx < d_NoOfBins)
     {
-        float new_pixel = (idx - *hist_min)/min_max_diff;
-        if(idx >= *hist_max)
+        float new_pixel = (idx - hist_min)/min_max_diff;
+        if(idx >= hist_max)
         {
             new_pixel = 1;
         }
-        else if(idx <= *hist_min)
+        else if(idx <= hist_min)
         {
             new_pixel = 0;
         }
         d_histogram[idx] = (unsigned char)(new_pixel*255);
     }
+}
+
+__global__ void cudaprint(void)
+{
+    int idx = (blockIdx.x * blockDim.x) + threadIdx.x;
+    printf("print number is %d", idx);
 }
 
 __global__ void applyAGC(unsigned short *src_img, unsigned char  *proc_image, unsigned char *d_histogram, int img_rows, int img_cols)
@@ -58,9 +64,9 @@ int main()
     // Create two temporary images (for holding sobel gradients)
     unsigned char *d_process_img;
     unsigned short *d_original_image;
-    cudaMalloc(&d_original_image, image.cols * image.rows* sizeof(unsigned short));
-    cudaMalloc(&d_process_img, image.cols* image.rows* sizeof(unsigned char));
-    cudaMalloc(&d_histogram_ptr, NoOfBins);
+    cudaMalloc((void**)&d_original_image, image.cols * image.rows* sizeof(unsigned short));
+    cudaMalloc((void**)&d_process_img, image.cols* image.rows* sizeof(unsigned char));
+    cudaMalloc((void**)&d_histogram_ptr, NoOfBins);
 
     cudaMemcpy(d_original_image, image.data, image.rows * image.cols* sizeof(unsigned short), cudaMemcpyHostToDevice);
 
@@ -159,8 +165,11 @@ int main()
     cudaMemcpy(d_hist_max, &max, sizeof(unsigned int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_hist_min, &min, sizeof(unsigned int), cudaMemcpyHostToDevice);
 
+    cudaprint<<<2,2>>>();
 
-    creatLUT<<<NoOfBins/256,256>>>(d_histogram_ptr, d_hist_min, d_hist_max);
+    // creatLUT<<<NoOfBins/256,256>>>(d_histogram_ptr, d_hist_min, d_hist_max);
+    creatLUT<<<NoOfBins/256,256>>>(d_histogram_ptr, min, max);
+
     cudaThreadSynchronize();
 
     applyAGC<<<pblocks,pthreads>>>(d_original_image, d_process_img, d_histogram_ptr, 480, 640);
