@@ -8,8 +8,10 @@ using namespace cv;
 #define NoOfBins 65536
 #define maxThresold 10
 #define minThersold 10
+#define TotalNoOfPixels 76800
 
 int histogram[NoOfBins];
+float CDF[NoOfBins];
 unsigned char histogram_LUT[NoOfBins];
 unsigned char *d_histogram_ptr;
 unsigned int *d_hist_max, *d_hist_min;
@@ -93,6 +95,7 @@ int main()
         for(int i = 0; i < NoOfBins; i++)
         {
             histogram[i] = 0;
+            CDF[i] = 0;
         }
         
         // cout << sizeof(unsigned short)<< endl;
@@ -122,22 +125,14 @@ int main()
                 hist_max = histogram[i];
             }
         }
-        // find the maximum intensity element from histogram
-        int max = histogram[NoOfBins-1];
-        for(int i = NoOfBins-2; i > 1; i--){
-            if(maxThresold < histogram[i]){
-                max = i;
-                break;
-            }
-        }
-
-        // find the minimum intensity element from histogram
-        int min = histogram[1];
-        for(int i = 2; i < NoOfBins; i++){
-            if(minThersold < histogram[i]){
-                min = i;
-                break;
-            }
+        //Calculate the CDF LUT
+        float new_pixel;
+        CDF[0] = histogram[0];
+        for(int i = 1; i < NoOfBins; i++)
+        {
+                CDF[i] = CDF[i-1] + histogram[i];
+                new_pixel = CDF[i]/TotalNoOfPixels;
+                histogram_LUT[i] = (unsigned char)(new_pixel*255);
         }
 
         // cout << "max:" << max << endl << "min:" << min <<endl;
@@ -153,10 +148,7 @@ int main()
         cudaMemset(d_histogram_ptr, 0, NoOfBins);
 
         // cudaprint<<<2,2>>>();
-
-        creatLUT<<<NoOfBins/256,256>>>(d_histogram_ptr, min, max);
-
-        cudaThreadSynchronize();
+        cudaMemcpy(d_histogram_ptr, histogram_LUT, NoOfBins, cudaMemcpyHostToDevice);
 
         applyAGC<<<pblocks,pthreads>>>(d_original_image, d_process_img, d_histogram_ptr, 480, 640);
         cudaThreadSynchronize();
