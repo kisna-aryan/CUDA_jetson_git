@@ -1,1 +1,1 @@
-# CUDA_jetson_git
+# This repo have source codes for jetson NX 
